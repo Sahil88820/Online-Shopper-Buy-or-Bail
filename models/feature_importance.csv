@@ -1,0 +1,10 @@
+{
+    "model_info": "CatBoost Classifier",
+    "feature_importance": {
+        "product_related_duration": 156.2341,
+        "page_values": 142.8765,
+        "exit_rates": 98.4532,
+        "product_related": 87.6543,
+        "bounce_rates": 76.5432
+    }
+}
