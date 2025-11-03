@@ -1,10 +1,25 @@
-{
-    "model_info": "CatBoost Classifier",
-    "feature_importance": {
-        "product_related_duration": 156.2341,
-        "page_values": 142.8765,
-        "exit_rates": 98.4532,
-        "product_related": 87.6543,
-        "bounce_rates": 76.5432
-    }
-}
+feature,importance
+PageValues,34.75069222918202
+Month,17.328964839885156
+ExitRates,5.923217622600648
+BounceRates,3.6393471767198027
+Administrative,3.579948204736875
+ProductFocusRatio,3.1352427767133584
+Administrative_Duration,3.083466186512166
+SpecialDay,3.044642788862168
+EngagementScore,2.8657208067471296
+TrafficType,2.643042031125399
+SessionIntensity,2.558686430305491
+TotalDuration,2.531712249751673
+VisitorType,2.3657699097561826
+ProductRelated_Duration,2.167781820491052
+TotalPages,2.0489271014358645
+ProductRelated,2.0170736468386687
+Informational_Duration,1.5578342304595523
+Region,1.4460086530538103
+Weekend,1.1330761525324906
+Browser,0.8524555669854296
+OperatingSystems,0.7509638795531518
+Informational,0.5754256957518972
+ExitFlag,0.0
+BounceFlag,0.0

@@ -1,85 +1,172 @@
 """
-Database models and SQLAlchemy setup.
+Database models & engine for Smart Shopper AI
+
+Default: SQLite for local development
+Production: Set DATABASE_URL env to PostgreSQL URL
+
+Usage:
+    from database import Base, engine, SessionLocal
+    Base.metadata.create_all(bind=engine)
 """
 
-from sqlalchemy import create_engine, Column, Integer, Float, String, Boolean, DateTime, ForeignKey
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, relationship
-from datetime import datetime
 import os
-from dotenv import load_dotenv
+from datetime import datetime
+from sqlalchemy import (
+    create_engine, Column, Integer, Float, String, Boolean,
+    DateTime, JSON, ForeignKey
+)
+from sqlalchemy.orm import declarative_base, sessionmaker, relationship
+from sqlalchemy.sql import func
 
-# Load environment variables
-load_dotenv()
+# ---------------------------------------------------------------------
+# DB CONNECTION
+# ---------------------------------------------------------------------
 
-# Database configuration
-DB_USER = os.getenv("DB_USER", "postgres")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "your_password")
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_PORT = os.getenv("DB_PORT", "5432")
-DB_NAME = os.getenv("DB_NAME", "smart_shopper")
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "sqlite:///./smartshopper.db"  # fallback for local testing
+)
 
-# Create database URL
-DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+# For SQLite thread issues with FastAPI
+connect_args = {}
+if DATABASE_URL.startswith("sqlite"):
+    connect_args = {"check_same_thread": False}
 
-# Create SQLAlchemy engine
-engine = create_engine(DATABASE_URL)
+engine = create_engine(DATABASE_URL, connect_args=connect_args)
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# Create base class for declarative models
 Base = declarative_base()
 
-class Shopper(Base):
-    __tablename__ = "shoppers"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    session_id = Column(String, unique=True, index=True)
-    administrative_pages = Column(Integer)
-    informational_pages = Column(Integer)
-    product_pages = Column(Integer)
+
+# ---------------------------------------------------------------------
+# MODELS
+# ---------------------------------------------------------------------
+
+class User(Base):
+    __tablename__ = "users"
+
+    user_id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, index=True, nullable=True)
+    name = Column(String, nullable=True)
+    total_purchases = Column(Integer, default=0)
+    total_spent = Column(Float, default=0.0)
+    loyalty_points = Column(Integer, default=0)
+    user_tier = Column(String, default="standard")
+    registration_date = Column(DateTime, default=datetime.utcnow)
+    last_active = Column(DateTime, default=datetime.utcnow)
+
+
+class Session(Base):
+    __tablename__ = "sessions"
+
+    session_id = Column(String, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.user_id"), nullable=True)
+
+    # Full input features
+    administrative = Column(Float)
+    administrative_duration = Column(Float)
+    informational = Column(Float)
+    informational_duration = Column(Float)
+    product_related = Column(Float)
+    product_related_duration = Column(Float)
     bounce_rates = Column(Float)
     exit_rates = Column(Float)
     page_values = Column(Float)
     special_day = Column(Float)
     month = Column(String)
-    weekend = Column(Boolean)
-    operating_system = Column(String)
-    browser = Column(String)
-    region = Column(String)
-    traffic_type = Column(Integer)
     visitor_type = Column(String)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    
-    # Relationships
-    predictions = relationship("Prediction", back_populates="shopper")
-    
+    weekend = Column(Boolean)
+    operating_systems = Column(Integer)
+    browser = Column(Integer)
+    region = Column(Integer)
+    traffic_type = Column(Integer)
+
+    device_type = Column(String, nullable=True)
+    ip_address = Column(String, nullable=True)
+    location = Column(String, nullable=True)
+    session_status = Column(String, default="active")
+    start_time = Column(DateTime, default=datetime.utcnow)
+    end_time = Column(DateTime, nullable=True)
+
+
 class Prediction(Base):
     __tablename__ = "predictions"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    shopper_id = Column(Integer, ForeignKey("shoppers.id"))
-    purchase_probability = Column(Float)
-    predicted_persona = Column(Integer)
-    recommended_incentive = Column(String)
-    actual_purchase = Column(Boolean, nullable=True)
-    incentive_accepted = Column(Boolean, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    
-    # Relationships
-    shopper = relationship("Shopper", back_populates="predictions")
+
+    prediction_id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(String, ForeignKey("sessions.session_id"))
+    user_id = Column(Integer, ForeignKey("users.user_id"), nullable=True)
+
+    will_buy = Column(Boolean)
+    buy_probability = Column(Float)
+    confidence = Column(Float)
+    model_version = Column(String, default="v1")
+    model_type = Column(String, default="purchase")
+    features_used = Column(JSON)
+    shap_values = Column(JSON)
+    predicted_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Persona(Base):
+    __tablename__ = "personas"
+
+    persona_id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(String, ForeignKey("sessions.session_id"))
+    user_id = Column(Integer, ForeignKey("users.user_id"), nullable=True)
+
+    cluster_id = Column(Integer)
+    persona_type = Column(String)
+    persona_color = Column(String, default="#4e79a7")
+    confidence = Column(Float)
+    characteristics = Column(JSON)
+    assigned_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Incentive(Base):
+    __tablename__ = "incentives"
+
+    incentive_id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(String, ForeignKey("sessions.session_id"))
+    user_id = Column(Integer, ForeignKey("users.user_id"), nullable=True)
+
+    incentive_type = Column(String)
+    category = Column(String, nullable=True)
+    message = Column(String, nullable=True)
+    discount_percent = Column(Float, nullable=True)
+    loyalty_points = Column(Integer, nullable=True)
+
+    was_shown = Column(Boolean, default=False)
+    was_accepted = Column(Boolean, default=False)
+    shown_at = Column(DateTime)
+    accepted_at = Column(DateTime)
+
+
+class Analytics(Base):
+    __tablename__ = "analytics"
+
+    analytics_id = Column(Integer, primary_key=True, index=True)
+    snapshot_date = Column(DateTime, default=func.now())
+    total_sessions = Column(Integer)
+    conversion_rate = Column(Float)
+    persona_distribution = Column(JSON)
+    incentive_effectiveness = Column(JSON)
+
+
+# ---------------------------------------------------------------------
+# DB UTILS
+# ---------------------------------------------------------------------
 
 def get_db():
-    """Database session context manager."""
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
 
-def init_db():
-    """Initialize database tables."""
-    Base.metadata.create_all(bind=engine)
 
-if __name__ == "__main__":
-    # Initialize database
-    init_db()
+# Create DB tables if they don't exist
+def init_db():
+    print("🛠️ Creating database tables (if missing)...")
+    Base.metadata.create_all(bind=engine)
+    print("✅ DB ready!")
+

@@ -1,82 +1,145 @@
 """
-Incentive recommendation module using XGBoost multi-class classifier.
+Incentive recommendation model training using XGBoost multi-class classifier.
+
+Outputs:
+- models/incentive_recommender.pkl
+- models/incentive_label_encoder.pkl
+- outputs/incentive_confusion_matrix.png
+- outputs/incentive_feature_importance.png
+- models/incentive_model_metrics.json
+
+Usage:
+    python src/incentive_recommendation.py
 """
 
-import pandas as pd
+import os
+import json
+import pickle
 import numpy as np
+import pandas as pd
 from xgboost import XGBClassifier
 from sklearn.preprocessing import LabelEncoder
-import pickle
-import logging
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+import seaborn as sns
+import matplotlib.pyplot as plt
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# ---------------- Paths ----------------
+BASE = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
-class IncentiveRecommender:
-    def __init__(self, random_state=42):
-        self.model = XGBClassifier(
-            n_estimators=100,
-            learning_rate=0.1,
-            max_depth=6,
-            random_state=random_state
-        )
-        self.label_encoder = LabelEncoder()
-        
-    def fit(self, X, y):
-        """Train the XGBoost model."""
-        try:
-            # Encode incentive types
-            y_encoded = self.label_encoder.fit_transform(y)
-            self.model.fit(X, y_encoded)
-            logger.info("Successfully trained XGBoost model")
-            return self
-        except Exception as e:
-            logger.error(f"Error training model: {str(e)}")
-            raise
-            
-    def predict(self, X):
-        """Predict incentive types."""
-        predictions = self.model.predict(X)
-        return self.label_encoder.inverse_transform(predictions)
-        
-    def predict_proba(self, X):
-        """Get probability distribution across incentive types."""
-        return self.model.predict_proba(X)
-        
-    def get_incentive_types(self):
-        """Get list of possible incentive types."""
-        return self.label_encoder.classes_
-        
-    def save_model(self, output_dir):
-        """Save model and label encoder."""
-        with open(f"{output_dir}/incentive_recommender.pkl", 'wb') as f:
-            pickle.dump(self.model, f)
-        with open(f"{output_dir}/incentive_label_encoder.pkl", 'wb') as f:
-            pickle.dump(self.label_encoder, f)
-            
-    def load_model(self, input_dir):
-        """Load model and label encoder."""
-        with open(f"{input_dir}/incentive_recommender.pkl", 'rb') as f:
-            self.model = pickle.load(f)
-        with open(f"{input_dir}/incentive_label_encoder.pkl", 'rb') as f:
-            self.label_encoder = pickle.load(f)
+PROCESSED = os.path.join(BASE, "data", "processed")
+MODELS = os.path.join(BASE, "models")
+OUTPUTS = os.path.join(BASE, "outputs")
 
-if __name__ == "__main__":
-    # Example usage
-    # Load preprocessed data
-    X_train = pd.read_csv("data/processed/X_train.csv")
-    
-    # Create synthetic incentive data for demonstration
-    incentive_types = [
-        'discount_10', 'discount_20', 'free_shipping',
-        'bundle_deal', 'loyalty_points', 'flash_sale',
-        'gift_card'
+os.makedirs(MODELS, exist_ok=True)
+os.makedirs(OUTPUTS, exist_ok=True)
+
+# ---------------- Load Data ----------------
+def load_csv(name):
+    path = os.path.join(PROCESSED, name)
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"{path} not found — run previous steps first.")
+    return pd.read_csv(path)
+
+print("📂 Loading training data...")
+
+X_train = load_csv("X_train.csv")
+X_test = load_csv("X_test.csv")
+
+# Simulated incentive label generation (until real logs available)
+# You can replace this later with real incentive acceptance logs
+def generate_incentive_labels(n):
+    classes = [
+        "discount_10", "discount_15", "discount_20",
+        "loyalty_points", "free_shipping", "urgency_banner", "none"
     ]
-    y_train = np.random.choice(incentive_types, size=len(X_train))
-    
-    # Create and train recommender
-    recommender = IncentiveRecommender()
-    recommender.fit(X_train, y_train)
-    
-    # Save model
-    recommender.save_model("models")
+    # Probability distribution (can tweak)
+    probs = [0.15, 0.15, 0.2, 0.15, 0.15, 0.1, 0.1]
+    return np.random.choice(classes, size=n, p=probs)
+
+# Load y if exists, else generate temporary synthetic labels
+y_train_path = os.path.join(PROCESSED, "y_train_incentive.csv")
+y_test_path = os.path.join(PROCESSED, "y_test_incentive.csv")
+
+if os.path.exists(y_train_path):
+    y_train = pd.read_csv(y_train_path).values.ravel()
+    y_test = pd.read_csv(y_test_path).values.ravel()
+    print("✅ Loaded real incentive labels")
+else:
+    print("⚠️ No incentive labels found — generating synthetic ones.")
+    y_train = generate_incentive_labels(len(X_train))
+    y_test = generate_incentive_labels(len(X_test))
+    pd.DataFrame(y_train).to_csv(y_train_path, index=False)
+    pd.DataFrame(y_test).to_csv(y_test_path, index=False)
+
+# Encode labels
+label_encoder = LabelEncoder()
+y_train_enc = label_encoder.fit_transform(y_train)
+y_test_enc = label_encoder.transform(y_test)
+
+# ---------------- Train Model ----------------
+print("🚀 Training XGBoost model for incentives...")
+
+model = XGBClassifier(
+    objective='multi:softprob',
+    num_class=len(label_encoder.classes_),
+    n_estimators=300,
+    learning_rate=0.05,
+    max_depth=6,
+    subsample=0.9,
+    colsample_bytree=0.9,
+    eval_metric="mlogloss",
+    random_state=42
+)
+
+model.fit(X_train, y_train_enc)
+
+# ---------------- Evaluate ----------------
+print("📊 Evaluating model...")
+
+y_pred = model.predict(X_test)
+
+metrics = {
+    "accuracy": float(accuracy_score(y_test_enc, y_pred)),
+    "classification_report": classification_report(y_test_enc, y_pred, target_names=label_encoder.classes_)
+}
+
+print(json.dumps({"accuracy": metrics["accuracy"]}, indent=2))
+
+# Save metrics
+json.dump(metrics, open(os.path.join(MODELS, "incentive_model_metrics.json"), "w"), indent=2)
+
+# ---------------- Confusion Matrix ----------------
+cm = confusion_matrix(y_test_enc, y_pred)
+plt.figure(figsize=(8,6))
+sns.heatmap(cm, annot=True, fmt='d', cmap="Greens",
+            xticklabels=label_encoder.classes_,
+            yticklabels=label_encoder.classes_)
+plt.title("Incentive Recommendation Confusion Matrix")
+plt.xlabel("Predicted")
+plt.ylabel("True")
+plt.tight_layout()
+plt.savefig(os.path.join(OUTPUTS, "incentive_confusion_matrix.png"))
+plt.close()
+
+# ---------------- Feature Importance ----------------
+importance = model.feature_importances_
+feat_imp = pd.DataFrame({
+    "feature": X_train.columns,
+    "importance": importance
+}).sort_values(by="importance", ascending=False)
+
+feat_imp.to_csv(os.path.join(MODELS, "incentive_feature_importance.csv"), index=False)
+
+plt.figure(figsize=(8,6))
+sns.barplot(x="importance", y="feature", data=feat_imp.head(15))
+plt.title("Incentive Model Feature Importance")
+plt.tight_layout()
+plt.savefig(os.path.join(OUTPUTS, "incentive_feature_importance.png"))
+plt.close()
+
+# ---------------- Save Model ----------------
+pickle.dump(model, open(os.path.join(MODELS, "incentive_recommender.pkl"), "wb"))
+pickle.dump(label_encoder, open(os.path.join(MODELS, "incentive_label_encoder.pkl"), "wb"))
+
+print("✅ Incentive model saved!")
+print("🎉 Incentive recommendation training complete.")

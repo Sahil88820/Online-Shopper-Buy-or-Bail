@@ -1,92 +1,97 @@
-"""
-Data preprocessing module for Smart Shopper AI.
-Handles data cleaning, feature engineering, and transformation.
-"""
-
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import StandardScaler, LabelEncoder
-from sklearn.model_selection import train_test_split
+import os
 import pickle
-import logging
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, LabelEncoder
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# =====================================
+# Paths
+# =====================================
+RAW_DATA_PATH = "data/raw/online_shoppers_intention.csv"
+PROCESSED_DIR = "data/processed/"
 
-class DataPreprocessor:
-    def __init__(self):
-        self.scaler = StandardScaler()
-        self.label_encoders = {}
-        self.feature_names = None
-        
-    def load_data(self, filepath):
-        """Load raw data from CSV file."""
-        try:
-            df = pd.read_csv(filepath)
-            logger.info(f"Successfully loaded data from {filepath}")
-            return df
-        except Exception as e:
-            logger.error(f"Error loading data: {str(e)}")
-            raise
-            
-    def preprocess_features(self, df):
-        """Clean and transform features."""
-        # Handle missing values
-        df = df.fillna(df.mean())
-        
-        # Encode categorical variables
-        categorical_cols = df.select_dtypes(include=['object']).columns
-        for col in categorical_cols:
-            if col not in self.label_encoders:
-                self.label_encoders[col] = LabelEncoder()
-            df[col] = self.label_encoders[col].fit_transform(df[col])
-            
-        # Scale numerical features
-        numerical_cols = df.select_dtypes(include=['float64', 'int64']).columns
-        df[numerical_cols] = self.scaler.fit_transform(df[numerical_cols])
-        
-        self.feature_names = df.columns.tolist()
-        return df
-        
-    def split_data(self, X, y, test_size=0.2, random_state=42):
-        """Split data into train and test sets."""
-        return train_test_split(X, y, test_size=test_size, random_state=random_state)
-        
-    def save_preprocessor(self, output_dir):
-        """Save preprocessing objects."""
-        with open(f"{output_dir}/scaler.pkl", 'wb') as f:
-            pickle.dump(self.scaler, f)
-        with open(f"{output_dir}/label_encoders.pkl", 'wb') as f:
-            pickle.dump(self.label_encoders, f)
-        with open(f"{output_dir}/feature_names.pkl", 'wb') as f:
-            pickle.dump(self.feature_names, f)
-            
-    def load_preprocessor(self, input_dir):
-        """Load preprocessing objects."""
-        with open(f"{input_dir}/scaler.pkl", 'rb') as f:
-            self.scaler = pickle.load(f)
-        with open(f"{input_dir}/label_encoders.pkl", 'rb') as f:
-            self.label_encoders = pickle.load(f)
-        with open(f"{input_dir}/feature_names.pkl", 'rb') as f:
-            self.feature_names = pickle.load(f)
+os.makedirs(PROCESSED_DIR, exist_ok=True)
 
-if __name__ == "__main__":
-    # Example usage
-    preprocessor = DataPreprocessor()
-    
-    # Load and preprocess data
-    df = preprocessor.load_data("data/raw/online_shoppers_intention.csv")
-    X = preprocessor.preprocess_features(df.drop('Revenue', axis=1))
-    y = df['Revenue']
-    
-    # Split data
-    X_train, X_test, y_train, y_test = preprocessor.split_data(X, y)
-    
-    # Save processed data
-    pd.DataFrame(X_train, columns=preprocessor.feature_names).to_csv("data/processed/X_train.csv", index=False)
-    pd.DataFrame(X_test, columns=preprocessor.feature_names).to_csv("data/processed/X_test.csv", index=False)
-    pd.Series(y_train).to_csv("data/processed/y_train.csv", index=False)
-    pd.Series(y_test).to_csv("data/processed/y_test.csv", index=False)
-    
-    # Save preprocessor objects
-    preprocessor.save_preprocessor("data/processed")
+# =====================================
+# Load Dataset
+# =====================================
+df = pd.read_csv(RAW_DATA_PATH)
+
+# =====================================
+# Basic Cleaning
+# =====================================
+df.drop_duplicates(inplace=True)
+
+# Convert boolean-like to true booleans
+df["Weekend"] = df["Weekend"].astype(int)
+df["Revenue"] = df["Revenue"].astype(int)
+
+# =====================================
+# Feature Engineering
+# =====================================
+df["TotalDuration"] = (
+    df["Administrative_Duration"] +
+    df["Informational_Duration"] +
+    df["ProductRelated_Duration"]
+)
+
+df["TotalPages"] = (
+    df["Administrative"] +
+    df["Informational"] +
+    df["ProductRelated"]
+)
+
+df["EngagementScore"] = df["TotalDuration"] * (1 - df["BounceRates"])
+
+df["ProductFocusRatio"] = df["ProductRelated"] / (df["TotalPages"] + 1)
+df["SessionIntensity"] = df["TotalDuration"] / (df["TotalPages"] + 1)
+
+df["ExitFlag"] = (df["ExitRates"] > 0.1).astype(int)
+df["BounceFlag"] = (df["BounceRates"] > 0.1).astype(int)
+
+# Fill any NA generated
+df.fillna(0, inplace=True)
+
+# =====================================
+# Encode Categorical
+# =====================================
+label_encoders = {}
+categorical_cols = ["Month", "VisitorType"]
+
+for col in categorical_cols:
+    le = LabelEncoder()
+    df[col] = le.fit_transform(df[col])
+    label_encoders[col] = le
+
+# =====================================
+# Train/Test Split
+# =====================================
+X = df.drop(columns=["Revenue"])
+y = df["Revenue"]
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42, stratify=y
+)
+
+# =====================================
+# Scale
+# =====================================
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+# =====================================
+# Save Outputs
+# =====================================
+pd.DataFrame(X_train_scaled, columns=X.columns).to_csv(PROCESSED_DIR + "X_train.csv", index=False)
+pd.DataFrame(X_test_scaled, columns=X.columns).to_csv(PROCESSED_DIR + "X_test.csv", index=False)
+pd.DataFrame(y_train).to_csv(PROCESSED_DIR + "y_train.csv", index=False)
+pd.DataFrame(y_test).to_csv(PROCESSED_DIR + "y_test.csv", index=False)
+
+pickle.dump(scaler, open(PROCESSED_DIR + "scaler.pkl", "wb"))
+pickle.dump(label_encoders, open(PROCESSED_DIR + "label_encoders.pkl", "wb"))
+pickle.dump(list(X.columns), open(PROCESSED_DIR + "feature_names.pkl", "wb"))
+
+print("✅ Data preprocessing complete!")
+print(f"Processed files saved to {PROCESSED_DIR}")
