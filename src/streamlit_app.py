@@ -1,184 +1,128 @@
-"""
-Streamlit dashboard for Smart Shopper AI.
-"""
-
 import streamlit as st
-import pandas as pd
-import numpy as np
-import plotly.express as px
-import plotly.graph_objects as go
-from datetime import datetime, timedelta
 import requests
+from streamlit_lottie import st_lottie
 import json
 
-# Page configuration
+API_URL = "http://127.0.0.1:8000/predict"
+
+# ------------------- UI CONFIG ---------------------
 st.set_page_config(
-    page_title="Smart Shopper AI Dashboard",
-    page_icon="🛒",
+    page_title="Smart Shopper AI",
+    page_icon="🛍️",
     layout="wide"
 )
 
-# Constants
-API_URL = "http://localhost:8000"
-CACHE_TTL = 300  # 5 minutes
+# Custom CSS
+st.markdown("""
+<style>
+body { background-color: #0b0e17 !important; }
+.stApp { background-color: #0b0e17; }
+.css-1d391kg { background-color: #131722; padding: 20px; border-radius: 12px; }
+h1,h2,h3,label { color: white !important; }
+.stMetric { background-color:#131722; padding:18px; border-radius:12px; border:1px solid #1f2a3c; }
+input, select { border-radius: 8px !important; }
+.sidebar .sidebar-content { background-color: #131722 !important; }
+</style>
+""", unsafe_allow_html=True)
 
-# Helper functions
-@st.cache_data(ttl=CACHE_TTL)
-def fetch_predictions(start_date, end_date):
-    """Fetch prediction data from API."""
-    try:
-        response = requests.get(
-            f"{API_URL}/predictions",
-            params={"start_date": start_date, "end_date": end_date}
-        )
-        return pd.DataFrame(response.json())
-    except Exception as e:
-        st.error(f"Error fetching predictions: {str(e)}")
-        return pd.DataFrame()
+# Sidebar
+st.sidebar.title("🛍️ Smart Shopper AI")
+st.sidebar.write("Real-time shopper intelligence engine")
+st.sidebar.markdown("---")
+st.sidebar.write("⚙️ Powered by CatBoost + KMeans + Streamlit + FastAPI")
 
-@st.cache_data(ttl=CACHE_TTL)
-def fetch_personas():
-    """Fetch persona profiles from API."""
-    try:
-        response = requests.get(f"{API_URL}/personas")
-        return response.json()
-    except Exception as e:
-        st.error(f"Error fetching personas: {str(e)}")
-        return {}
+# ------------------- HEADER -----------------------
+col1, col2 = st.columns([1.2, 1])
 
-def create_metrics_cards(df):
-    """Display key metrics in cards."""
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric(
-            "Average Purchase Probability",
-            f"{df['purchase_probability'].mean():.2%}",
-            f"{df['purchase_probability'].mean() - 0.5:.2%}"
-        )
-    
-    with col2:
-        conversion_rate = (df['actual_purchase'] == True).mean()
-        st.metric(
-            "Conversion Rate",
-            f"{conversion_rate:.2%}",
-            f"{conversion_rate - 0.15:.2%}"
-        )
-    
-    with col3:
-        incentive_rate = (df['incentive_accepted'] == True).mean()
-        st.metric(
-            "Incentive Acceptance Rate",
-            f"{incentive_rate:.2%}",
-            f"{incentive_rate - 0.25:.2%}"
-        )
-    
-    with col4:
-        active_visitors = len(df['session_id'].unique())
-        st.metric(
-            "Active Visitors",
-            f"{active_visitors:,}",
-            f"{active_visitors - 1000:,}"
-        )
-
-def plot_purchase_probability_distribution(df):
-    """Plot distribution of purchase probabilities."""
-    fig = px.histogram(
-        df,
-        x='purchase_probability',
-        nbins=50,
-        title='Distribution of Purchase Probabilities',
-        labels={'purchase_probability': 'Purchase Probability'},
-        color_discrete_sequence=['#3366cc']
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
-def plot_persona_distribution(df):
-    """Plot distribution of shopper personas."""
-    persona_counts = df['predicted_persona'].value_counts()
-    fig = px.pie(
-        values=persona_counts.values,
-        names=persona_counts.index,
-        title='Distribution of Shopper Personas',
-        color_discrete_sequence=px.colors.qualitative.Set3
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
-def plot_incentive_effectiveness(df):
-    """Plot effectiveness of different incentive types."""
-    incentive_stats = df.groupby('recommended_incentive').agg({
-        'incentive_accepted': 'mean',
-        'session_id': 'count'
-    }).reset_index()
-    
-    fig = px.bar(
-        incentive_stats,
-        x='recommended_incentive',
-        y='incentive_accepted',
-        title='Incentive Effectiveness by Type',
-        labels={
-            'recommended_incentive': 'Incentive Type',
-            'incentive_accepted': 'Acceptance Rate'
-        },
-        color='session_id',
-        color_continuous_scale='Viridis'
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
-# Main dashboard
-def main():
-    # Title and description
-    st.title("🛒 Smart Shopper AI Dashboard")
+with col1:
     st.markdown("""
-        Monitor real-time shopper behavior predictions and incentive recommendations.
-        Use the filters below to analyze different time periods and segments.
-    """)
-    
-    # Date filter
-    col1, col2 = st.columns(2)
-    with col1:
-        start_date = st.date_input(
-            "Start Date",
-            datetime.now().date() - timedelta(days=30)
-        )
-    with col2:
-        end_date = st.date_input(
-            "End Date",
-            datetime.now().date()
-        )
-    
-    # Fetch data
-    df = fetch_predictions(start_date, end_date)
-    if df.empty:
-        st.warning("No data available for the selected period.")
-        return
-    
-    # Display metrics
-    st.subheader("📊 Key Metrics")
-    create_metrics_cards(df)
-    
-    # Charts
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        plot_purchase_probability_distribution(df)
-        
-    with col2:
-        plot_persona_distribution(df)
-    
-    st.subheader("💰 Incentive Analysis")
-    plot_incentive_effectiveness(df)
-    
-    # Detailed data view
-    st.subheader("🔍 Detailed Prediction Data")
-    st.dataframe(
-        df.sort_values('created_at', ascending=False)
-        .head(100)
-        .style.format({
-            'purchase_probability': '{:.2%}',
-            'created_at': '{:%Y-%m-%d %H:%M:%S}'
-        })
-    )
+    <h1>🧠 Smart Shopper AI</h1>
+    <h3 style="color:#c6d5ff">Predict Purchase Intent • Persona • Incentive</h3>
+    """, unsafe_allow_html=True)
 
-if __name__ == "__main__":
-    main()
+with col2:
+    st_lottie("https://assets9.lottiefiles.com/packages/lf20_u4yrau.json", height=120)
+
+st.markdown("---")
+
+# ------------------ INPUT FORM --------------------
+with st.form("input_form"):
+    st.subheader("🧾 Shopper Session Details")
+
+    colA, colB, colC = st.columns(3)
+    
+    with colA:
+        administrative = st.number_input("Administrative Pages", 0.0)
+        informational = st.number_input("Informational Pages", 0.0)
+        product_related = st.number_input("Product Related Pages", 0.0)
+
+    with colB:
+        administrative_duration = st.number_input("Admin Duration", 0.0)
+        informational_duration = st.number_input("Informational Duration", 0.0)
+        product_related_duration = st.number_input("Product Duration", 0.0)
+
+    with colC:
+        bounce_rates = st.number_input("Bounce Rate", 0.0, 1.0, 0.02)
+        exit_rates = st.number_input("Exit Rate", 0.0, 1.0, 0.03)
+        page_values = st.number_input("Page Value Score", 0.0)
+
+    st.markdown("### 🌎 Visitor Metadata")
+
+    col4, col5, col6, col7 = st.columns(4)
+    month = col4.selectbox("Month", ["Feb","Mar","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"])
+    visitor_type = col5.selectbox("Visitor Type", ["Returning_Visitor", "New_Visitor"])
+    weekend = col6.checkbox("Weekend Session")
+    special_day = col7.number_input("Holiday Proximity (0-1)", 0.0, 1.0, 0.0)
+
+    col8, col9, col10, col11 = st.columns(4)
+    operating_systems = col8.number_input("OS", 1, 10, 2)
+    browser = col9.number_input("Browser", 1, 10, 2)
+    region = col10.number_input("Region", 1, 10, 1)
+    traffic_type = col11.number_input("Traffic Source", 1, 20, 2)
+
+    st.markdown("")
+    submitted = st.form_submit_button("🚀 Predict Shopper Behavior", use_container_width=True)
+
+# ---------------- SEND REQUEST & DISPLAY OUTPUT -----------------
+if submitted:
+    payload = {
+        "administrative": administrative,
+        "administrative_duration": administrative_duration,
+        "informational": informational,
+        "informational_duration": informational_duration,
+        "product_related": product_related,
+        "product_related_duration": product_related_duration,
+        "bounce_rates": bounce_rates,
+        "exit_rates": exit_rates,
+        "page_values": page_values,
+        "special_day": special_day,
+        "month": month,
+        "visitor_type": visitor_type,
+        "weekend": weekend,
+        "operating_systems": operating_systems,
+        "browser": browser,
+        "region": region,
+        "traffic_type": traffic_type
+    }
+    st.write("📤 Sending to API:", payload)
+
+    response = requests.post(API_URL, json=payload)
+
+    if response.status_code == 200:
+        result = response.json()
+
+        st.markdown("---")
+        st.subheader("📊 Prediction Results")
+
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Buy Probability", f"{result['prediction']['buy_probability']*100:.2f}%")
+        col2.metric("Persona", result["persona"]["persona_type"])
+        col3.metric("Best Incentive", result["incentive"]["incentive_type"])
+
+        st.success(f"🪄 Persona: **{result['persona']['persona_type']}** 🧍")
+        st.info(f"🎁 Incentive to show: **{result['incentive']['incentive_type']}**")
+        
+        st.write("Debug JSON Response:", result)
+    else:
+        st.error("❌ API Error — check backend logs")
+        st.write(response.text)
