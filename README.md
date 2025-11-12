@@ -1,0 +1,1 @@
+Smart Shopper AI project structure
