@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
+# from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, confusion_matrix, classification_report, roc_auc_score, f1_score
 from sklearn.pipeline import Pipeline
 from imblearn.over_sampling import SMOTE
@@ -36,7 +36,6 @@ def train_and_evaluate():
 
     # Pipeline: Scale + Model
     pipeline = Pipeline([
-        ("scaler", StandardScaler()),
         ("model", XGBClassifier(
             scale_pos_weight=scale_pos_weight,
             max_depth=6,
