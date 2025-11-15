@@ -16,7 +16,7 @@ import matplotlib.cm as cm
 # ======================================
 # 1. Load dataset
 # ======================================
-data = pd.read_csv(r"C:\Users\aagra\Desktop\Online shopper\notebooks\cleaned_ecommerce_shopper_data.csv")
+data = pd.read_csv(r"C:\Users\ADMIN\Videos\Smart clone\Online-Shopper-Buy-or-Bail\notebooks\cleaned_ecommerce_shopper_data.csv")
 print("✅ Dataset loaded successfully")
 print("Shape:", data.shape)
 
