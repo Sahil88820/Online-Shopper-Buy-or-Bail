@@ -37,7 +37,7 @@ X = data[features].copy()
 # 3. Feature Weighting Adjustments (Fix A + E)
 # ======================================
 # Reduce the impact of binary features (Revenue, ActiveBuyer, ReturningVisitorFlag)
-'''X['Revenue'] = X['Revenue'] * 0.4
+'''X['Revenue'] = X['Revenue'] * 0.8
 X['ActiveBuyer'] = X['ActiveBuyer'] * 0.5'''
 
 
